@@ -21,7 +21,6 @@ import json
 import logging
 import math
 import os
-from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -449,12 +448,12 @@ class AudioTextDataCollator:
         attention_mask_list = []
 
         for item in batch:
-            # HF datasets with Audio feature return an AudioDecoder (dict-like with array/sampling_rate keys)
+            # HF datasets Audio feature returns AudioDecoder (supports __getitem__ but isn't a Mapping)
             audio_data = item["audio"]
-            if isinstance(audio_data, Mapping):
+            try:
                 audio_array = audio_data["array"]
                 sr = audio_data.get("sampling_rate", self.audio_sample_rate)
-            else:
+            except (TypeError, KeyError):
                 audio_array = audio_data
                 sr = item.get("sample_rate", self.audio_sample_rate)
             if sr != self.audio_sample_rate:
