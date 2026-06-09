@@ -224,6 +224,10 @@ class QwenOmniModel(nn.Module):
             num_layers=projector_num_layers,
             pooling=audio_pooling,
         )
+        # Match projector dtype to LLM embedding dtype
+        projector_dtype = self.llm.get_input_embeddings().weight.dtype
+        self.audio_projector.to(dtype=projector_dtype)
+        logger.info(f"Projector dtype: {projector_dtype}")
 
         # ---- Tokenizer ----
         self.tokenizer = AutoTokenizer.from_pretrained(
