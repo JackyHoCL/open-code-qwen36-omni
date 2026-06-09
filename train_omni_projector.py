@@ -304,6 +304,8 @@ class QwenOmniModel(nn.Module):
         #    Insert audio token embeddings at the <|audio|> position
         llm_inputs_embeds = self.llm.get_input_embeddings()(input_ids)  # [batch, text_seq, llm_dim]
         llm_dtype = llm_inputs_embeds.dtype
+        # Embedding is frozen, so output doesn't require grad. Enable it for projector gradients.
+        llm_inputs_embeds = llm_inputs_embeds.clone().requires_grad_(True)
 
         # Replace <|audio|> token embedding with projected audio features
         audio_token_mask = (input_ids == self.audio_token_id).unsqueeze(-1)  # [batch, text_seq, 1]
