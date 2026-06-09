@@ -10,6 +10,5 @@ datasets>=2.14.0
 soundfile>=0.12.1
 torchaudio>=2.1.0
 
-# Optional but recommended
-flash-attn>=2.5.0  # FlashAttention-2 for faster attention (CUDA only)
+# Optional
 deepspeed>=0.14.0  # Multi-GPU distributed training

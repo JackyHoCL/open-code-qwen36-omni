@@ -180,7 +180,6 @@ class QwenOmniModel(nn.Module):
             torch_dtype=torch_dtype,
             device_map="auto",
             trust_remote_code=True,
-            attn_implementation="flash_attention_2" if self._has_flash_attn() else "eager",
         )
         self.llm.eval()
         for param in self.llm.parameters():
@@ -247,9 +246,6 @@ class QwenOmniModel(nn.Module):
 
         self.num_audio_tokens = 1  # one <|audio|> placeholder per audio segment
 
-    @staticmethod
-    def _has_flash_attn() -> bool:
-        return hasattr(torch, "cuda") and torch.cuda.is_available()
 
     # ---- Forward pass ----
 
