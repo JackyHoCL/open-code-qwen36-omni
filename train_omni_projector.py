@@ -448,11 +448,11 @@ class AudioTextDataCollator:
         attention_mask_list = []
 
         for item in batch:
-            # HF datasets Audio feature returns AudioDecoder (supports __getitem__ but isn't a Mapping)
+            # HF datasets Audio feature returns AudioDecoder (supports __getitem__ but no .get())
             audio_data = item["audio"]
             try:
                 audio_array = audio_data["array"]
-                sr = audio_data.get("sampling_rate", self.audio_sample_rate)
+                sr = audio_data["sampling_rate"]
             except (TypeError, KeyError):
                 audio_array = audio_data
                 sr = item.get("sample_rate", self.audio_sample_rate)
