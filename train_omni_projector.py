@@ -299,7 +299,6 @@ class QwenOmniModel(nn.Module):
         with torch.autocast(device_type="cuda", dtype=torch.float8_e4m3fn, enabled=self.use_fp8):
             projected_audio = self.audio_projector(
                 audio_features,
-                audio_attention_mask,
             )  # [batch, 1 or N, llm_dim]
 
         # 4. Build multimodal input for the LLM
@@ -382,7 +381,7 @@ class QwenOmniModel(nn.Module):
 
         # Project (FP8 autocast)
         with torch.autocast(device_type="cuda", dtype=torch.float8_e4m3fn, enabled=self.use_fp8):
-            projected_audio = self.audio_projector(audio_features, audio_attention_mask)
+            projected_audio = self.audio_projector(audio_features)
 
         # Build inputs_embeds with audio
         llm_inputs_embeds = self.llm.get_input_embeddings()(prompt_ids).float()
