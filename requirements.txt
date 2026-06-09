@@ -1,17 +1,15 @@
-# Base dependencies
-torch>=2.5.0  # FP8 support requires PyTorch >= 2.4, >= 2.5 recommended
+# Core ML framework
+torch>=2.5.0
+accelerate>=0.25.0
+
+# Hugging Face
 transformers>=5.0.0
 datasets>=2.14.0
-accelerate>=0.25.0
 
 # Audio
 soundfile>=0.12.1
 torchaudio>=2.1.0
 
 # Optional but recommended
-flash-attn>=2.5.0  # For flash attention 2 (requires CUDA)
-deepspeed>=0.14.0  # For multi-GPU training
-
-# FP8 notes:
-# - Native FP8 (Hopper H100/H200): PyTorch 2.4+ with CUDA 12.4+
-# - Emulated FP8 (A100): memory savings only, no speedup
+flash-attn>=2.5.0  # FlashAttention-2 for faster attention (CUDA only)
+deepspeed>=0.14.0  # Multi-GPU distributed training
