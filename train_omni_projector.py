@@ -21,6 +21,7 @@ import json
 import logging
 import math
 import os
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -448,9 +449,14 @@ class AudioTextDataCollator:
         attention_mask_list = []
 
         for item in batch:
-            # Load and resample audio
-            audio_array = item["audio"]
-            sr = item.get("sample_rate", self.audio_sample_rate)
+            # HF datasets with Audio feature return an AudioDecoder (dict-like with array/sampling_rate keys)
+            audio_data = item["audio"]
+            if isinstance(audio_data, Mapping):
+                audio_array = audio_data["array"]
+                sr = audio_data.get("sampling_rate", self.audio_sample_rate)
+            else:
+                audio_array = audio_data
+                sr = item.get("sample_rate", self.audio_sample_rate)
             if sr != self.audio_sample_rate:
                 # Simple resampling using torchaudio if available
                 try:
@@ -473,8 +479,9 @@ class AudioTextDataCollator:
 
             audio_batch.append(audio_padded)
 
-            # Encode text
-            input_ids, labels = self._encode_with_audio_token(item["prompt"], item["text"])
+            # Encode text (default prompt if not in dataset)
+            prompt = item.get("prompt", "Transcribe: <|audio|>")
+            input_ids, labels = self._encode_with_audio_token(prompt, item["text"])
             input_ids_list.append(input_ids)
             labels_list.append(labels)
 
