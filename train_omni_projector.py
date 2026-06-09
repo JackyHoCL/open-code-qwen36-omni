@@ -32,6 +32,7 @@ from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
     WhisperForConditionalGeneration,
+    WhisperProcessor,
 )
 
 logging.basicConfig(
@@ -212,6 +213,7 @@ class QwenOmniModel(nn.Module):
 
         # We only use the encoder part of whisper
         self.whisper_encoder = self.whisper.model.encoder
+        self.whisper_processor = WhisperProcessor.from_pretrained(whisper_model_name)
         self.audio_hidden_size = audio_hidden_size  # 1280 for large-v3
 
         # ---- Audio Projector ----
@@ -272,21 +274,33 @@ class QwenOmniModel(nn.Module):
         """
         batch_size = input_ids.shape[0]
 
-        # 1. Extract audio features from Whisper encoder (FP8 autocast)
+        # 1. Convert raw audio to mel spectrogram features
+        with torch.no_grad():
+            # Whisper feature extractor expects audio as float32 numpy arrays
+            audio_np = audio.cpu().float().numpy()
+            # feature_extractor accepts [batch, samples] or list of [samples]
+            mel_inputs = self.whisper_processor.feature_extractor(
+                list(audio_np),
+                sampling_rate=16000,
+                return_tensors="pt",
+                padding=True,
+            ).input_features.to(device=audio.device, dtype=torch.float16)
+
+        # 2. Extract audio features from Whisper encoder (FP8 autocast)
         with torch.no_grad():
             audio_features = self.whisper_encoder(
-                audio,
+                mel_inputs,
                 output_hidden_states=False,
             ).last_hidden_state  # [batch, audio_seq, 1280]
 
-        # 2. Project audio features into LLM space (FP8 autocast)
+        # 3. Project audio features into LLM space (FP8 autocast)
         with torch.autocast(device_type="cuda", dtype=torch.float8_e4m3fn, enabled=self.use_fp8):
             projected_audio = self.audio_projector(
                 audio_features,
                 audio_attention_mask,
             )  # [batch, 1 or N, llm_dim]
 
-        # 3. Build multimodal input for the LLM
+        # 4. Build multimodal input for the LLM
         #    Insert audio token embeddings at the <|audio|> position
         # Convert inputs_embeds to float16 for FP8-compatible LLM forward
         llm_inputs_embeds = self.llm.get_input_embeddings()(input_ids)  # [batch, text_seq, llm_dim]
@@ -348,9 +362,18 @@ class QwenOmniModel(nn.Module):
         """
         self.eval()
 
+        # Convert raw audio to mel spectrogram
+        audio_np = audio.cpu().float().numpy()
+        mel_inputs = self.whisper_processor.feature_extractor(
+            list(audio_np),
+            sampling_rate=16000,
+            return_tensors="pt",
+            padding=True,
+        ).input_features.to(device=audio.device, dtype=torch.float16)
+
         # Extract audio features (FP8 autocast)
         with torch.autocast(device_type="cuda", dtype=torch.float8_e4m3fn, enabled=self.use_fp8):
-            audio_features = self.whisper_encoder(audio).last_hidden_state
+            audio_features = self.whisper_encoder(mel_inputs).last_hidden_state
 
         # Project (FP8 autocast)
         with torch.autocast(device_type="cuda", dtype=torch.float8_e4m3fn, enabled=self.use_fp8):
