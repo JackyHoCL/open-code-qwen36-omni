@@ -1182,15 +1182,9 @@ Examples:
 
     # Precision
     parser.add_argument(
-        "--fp8",
-        action="store_true",
-        default=True,
-        help="Use FP8 (float8_e4m3fn) for LLM and Whisper (default). Set --no-fp8 for BF16.",
-    )
-    parser.add_argument(
         "--no-fp8",
         action="store_true",
-        help="Disable FP8, use BF16 instead.",
+        help="Disable FP8, use BF16 instead (default: FP8 enabled).",
     )
 
     # DeepSpeed
@@ -1208,12 +1202,13 @@ Examples:
 
     args = parser.parse_args()
 
-    # Handle --no-fp8 flag
-    if args.no_fp8:
-        args.fp8 = False
+    # FP8 enabled by default, disable with --no-fp8
+    args_dict = vars(args)
+    use_fp8 = not args_dict.pop("no_fp8", False)
+    args_dict["fp8"] = use_fp8
 
     # Run training
-    train(**vars(args))
+    train(**args_dict)
 
 
 if __name__ == "__main__":
