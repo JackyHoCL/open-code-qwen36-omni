@@ -276,15 +276,17 @@ class QwenOmniModel(nn.Module):
 
         # 1. Convert raw audio to mel spectrogram features
         with torch.no_grad():
-            # Whisper feature extractor expects audio as float32 numpy arrays
+            # Match mel dtype to whisper model dtype
+            mel_dtype = self.whisper.dtype
+            if mel_dtype == torch.float8_e4m3fn:
+                mel_dtype = torch.float16  # FP8 model needs fp16/bf16 inputs
             audio_np = audio.cpu().float().numpy()
-            # feature_extractor accepts [batch, samples] or list of [samples]
             mel_inputs = self.whisper_processor.feature_extractor(
                 list(audio_np),
                 sampling_rate=16000,
                 return_tensors="pt",
                 padding=True,
-            ).input_features.to(device=audio.device, dtype=torch.float16)
+            ).input_features.to(device=audio.device, dtype=mel_dtype)
 
         # 2. Extract audio features from Whisper encoder (FP8 autocast)
         with torch.no_grad():
@@ -363,13 +365,16 @@ class QwenOmniModel(nn.Module):
         self.eval()
 
         # Convert raw audio to mel spectrogram
+        mel_dtype = self.whisper.dtype
+        if mel_dtype == torch.float8_e4m3fn:
+            mel_dtype = torch.float16
         audio_np = audio.cpu().float().numpy()
         mel_inputs = self.whisper_processor.feature_extractor(
             list(audio_np),
             sampling_rate=16000,
             return_tensors="pt",
             padding=True,
-        ).input_features.to(device=audio.device, dtype=torch.float16)
+        ).input_features.to(device=audio.device, dtype=mel_dtype)
 
         # Extract audio features (FP8 autocast)
         with torch.autocast(device_type="cuda", dtype=torch.float8_e4m3fn, enabled=self.use_fp8):
