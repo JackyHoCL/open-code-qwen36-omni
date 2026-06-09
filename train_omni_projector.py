@@ -70,19 +70,19 @@ class AudioProjector(nn.Module):
         super().__init__()
         self.pooling = pooling
 
-        # Build MLP projector (all linear layers in float32 for FP8 autoguard)
+        # Build MLP projector
         layers: list[nn.Module] = []
         for i in range(num_layers):
             in_size = audio_hidden_size if i == 0 else projector_hidden_size
             out_size = llm_hidden_size if i == num_layers - 1 else projector_hidden_size
-            layers.append(nn.Linear(in_size, out_size, dtype=torch.float32))
+            layers.append(nn.Linear(in_size, out_size))
             if i < num_layers - 1:
                 layers.append(nn.GELU())
         self.projector = nn.Sequential(*layers)
 
         # Optional gated pooling
         if pooling == "gated":
-            self.gate = nn.Parameter(torch.zeros(1, dtype=torch.float32))
+            self.gate = nn.Parameter(torch.zeros(1))
         else:
             self.gate = None
 
@@ -99,9 +99,6 @@ class AudioProjector(nn.Module):
         Returns:
             projected features in LLM embedding space
         """
-        # Use float32 for pooling to maintain numerical stability
-        audio_features = audio_features.float()
-
         if self.pooling == "mean":
             if audio_attention_mask is not None:
                 mask = audio_attention_mask.unsqueeze(-1).float()
@@ -122,9 +119,7 @@ class AudioProjector(nn.Module):
         else:
             pooled = audio_features  # no pooling
 
-        # Convert to float16 for FP8 casting (Hopper native)
-        # If using FP8 autocast, the Linear layers will auto-cast inputs to FP8
-        projected = self.projector(pooled.to(torch.float16))
+        projected = self.projector(pooled)
         return projected
 
 
@@ -303,9 +298,8 @@ class QwenOmniModel(nn.Module):
 
         # 4. Build multimodal input for the LLM
         #    Insert audio token embeddings at the <|audio|> position
-        # Convert inputs_embeds to float16 for FP8-compatible LLM forward
         llm_inputs_embeds = self.llm.get_input_embeddings()(input_ids)  # [batch, text_seq, llm_dim]
-        llm_inputs_embeds = llm_inputs_embeds.float()  # Use float32 for embedding lookup
+        llm_dtype = llm_inputs_embeds.dtype
 
         # Replace <|audio|> token embedding with projected audio features
         audio_token_mask = (input_ids == self.audio_token_id).unsqueeze(-1)  # [batch, text_seq, 1]
@@ -322,12 +316,12 @@ class QwenOmniModel(nn.Module):
                 if num_tokens > 0:
                     llm_inputs_embeds[batch_idx, start:end, :] = (
                         projected_audio[batch_idx, :num_tokens, :]
-                    ).float()
+                    ).to(llm_dtype)
 
-        # 4. Forward through LLM (FP8 autocast for matmuls)
+        # 5. Forward through LLM
         with torch.autocast(device_type="cuda", dtype=torch.float8_e4m3fn, enabled=self.use_fp8):
             outputs = self.llm(
-                inputs_embeds=llm_inputs_embeds.to(torch.float16),
+                inputs_embeds=llm_inputs_embeds,
                 attention_mask=attention_mask,
                 labels=labels,
             )
@@ -384,7 +378,8 @@ class QwenOmniModel(nn.Module):
             projected_audio = self.audio_projector(audio_features)
 
         # Build inputs_embeds with audio
-        llm_inputs_embeds = self.llm.get_input_embeddings()(prompt_ids).float()
+        llm_inputs_embeds = self.llm.get_input_embeddings()(prompt_ids)
+        llm_dtype = llm_inputs_embeds.dtype
         audio_token_mask = (prompt_ids == self.audio_token_id).unsqueeze(-1)
         audio_token_indices = audio_token_mask.nonzero(as_tuple=True)
 
@@ -398,12 +393,12 @@ class QwenOmniModel(nn.Module):
             if num_tokens > 0:
                 llm_inputs_embeds[batch_idx, start:end, :] = (
                     projected_audio[batch_idx, :num_tokens, :]
-                ).float()
+                ).to(llm_dtype)
 
         # Generate (FP8 autocast)
         with torch.autocast(device_type="cuda", dtype=torch.float8_e4m3fn, enabled=self.use_fp8):
             outputs = self.llm.generate(
-                inputs_embeds=llm_inputs_embeds.to(torch.float16),
+                inputs_embeds=llm_inputs_embeds,
                 max_new_tokens=max_new_tokens,
                 temperature=temperature,
                 top_p=top_p,
