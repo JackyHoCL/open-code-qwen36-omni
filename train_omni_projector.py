@@ -577,6 +577,12 @@ def prepare_dataset(
     else:
         ds = load_dataset(dataset_name, split=dataset_split, streaming=streaming)
 
+    # Rename columns to standard names if needed
+    if audio_column != "audio":
+        ds = ds.rename_column(audio_column, "audio")
+    if text_column != "text":
+        ds = ds.rename_column(text_column, "text")
+
     if max_samples:
         if not streaming:
             ds = ds.select(range(min(max_samples, len(ds))))
@@ -632,6 +638,8 @@ def train(
     whisper_model_name: str = "openai/whisper-large-v3-turbo",
     dataset_name: str = "LibriSpeech",
     dataset_config: Optional[str] = None,
+    audio_column: str = "audio",
+    text_column: str = "text",
     output_dir: str = "./output/qwen-omni-projector",
     num_train_epochs: int = 3,
     per_device_train_batch_size: int = 2,
@@ -750,6 +758,8 @@ def train(
     dataset = prepare_dataset(
         dataset_name=dataset_name,
         dataset_config=dataset_config,
+        audio_column=audio_column,
+        text_column=text_column,
         max_samples=None,  # set to a number for debugging, e.g., 1000
     )
     logger.info(f"Dataset loaded: {len(dataset)} samples")
@@ -1069,6 +1079,18 @@ Examples:
         type=str,
         default=None,
         help="Dataset config (e.g., 'clean', 'other')",
+    )
+    parser.add_argument(
+        "--text_column",
+        type=str,
+        default="text",
+        help="Column name for transcription text (e.g., 'sentence' for Common Voice)",
+    )
+    parser.add_argument(
+        "--audio_column",
+        type=str,
+        default="audio",
+        help="Column name for audio data",
     )
 
     # Training arguments
